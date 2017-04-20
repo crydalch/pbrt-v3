@@ -1,12 +1,14 @@
-# Very rough volume exporter for pbrt v3; only exports first volume named 'density'
+# Very rough volume exporter for pbrt v3; only exports first volume named 'density' for each object to be renderered
 
 thisRop     = hou.pwd()
 scene_file  = thisRop.parm("pbrt_diskfile").eval()
-print scene_file
 pic_file    = thisRop.parm("pbrt_picture").eval()
 camera      = hou.node(thisRop.parm("camera").eval())
 lights      = hou.node("/").recursiveGlob(thisRop.parm("lights").eval(), hou.nodeTypeFilter.ObjLight)
 objects     = hou.node("/").recursiveGlob(thisRop.parm("objects").eval(), hou.nodeTypeFilter.ObjGeometry)
+
+if not camera:
+    raise hou.Error("A camera is required!")
 
 pbrtfile    = open(scene_file, 'w+')
 res         = camera.parmTuple("res").eval()
@@ -27,6 +29,28 @@ pbrtfile.write('Camera "perspective" "float fov" [{0}]\n'.format(fov))
 pbrtfile.write('Integrator "{0}" "integer maxdepth" [{1}]\n'.format(integrator, maxdepth))
 pbrtfile.write('Sampler "{0}" "integer pixelsamples" [{1}]\n\n'.format(sampler, pxsamples))
 
+# Begin the world
+pbrtfile.write('WorldBegin\n\n')
+
+# Add lights to the scene
+for lgt in lights:
+
+    lgt_xform   = ' '.join(str(x) for x in lgt.worldTransform().asTuple())
+    lgt_shape   = # Support disk and sphere for now
+    lgt_L       = # The light's color * light intensity
+
+    pbrtfile.write('AttributeBegin\n')
+    pbrtfile.write('\tAreaLightSource "diffuse" "rgb L" [ {0} ]\n'.format())
+    pbrtfile.write('\tTransform {0}\n'.format())
+    pbrtfile.write('\Shape "{0}" "float radius" [{1}]\n'.format())
+    pbrtfile.write('AttributeEnd\n')
+
+# Add the objects to the scene
+for obj in objects:
+    pbrtfile.write(''.format())
+
+# Close the world and the file
+pbrtfile.write('WorldEnd\n')
 pbrtfile.close()
 
 # if '.ply' not in shapeOutputPath:
