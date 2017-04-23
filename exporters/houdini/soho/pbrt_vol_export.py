@@ -1,91 +1,109 @@
-# Very rough volume exporter for pbrt v3; only exports first volume named 'density' for each object to be renderered
+# Very rough volume exporter for pbrt v3
+#
+#   Save volume(s) to pbrt file on-disk, optionally with the Obj-level transform applied
+#   Only exports volumes named 'density' for now
+#
+#
 
-thisRop     = hou.pwd()
-scene_file  = thisRop.parm("pbrt_diskfile").eval()
-pic_file    = thisRop.parm("pbrt_picture").eval()
-camera      = hou.node(thisRop.parm("camera").eval())
-lights      = hou.node("/").recursiveGlob(thisRop.parm("lights").eval(), hou.nodeTypeFilter.ObjLight)
-objects     = hou.node("/").recursiveGlob(thisRop.parm("objects").eval(), hou.nodeTypeFilter.ObjGeometry)
+# Thanks graham
+def findParentObject(node):
+    """ Find the first parent node that is an object node. """
+    # The node is an object node so return it.
+    if isinstance(node, hou.ObjNode):
+        return node
+    # Get the parent of the node.
+    parent = node.parent()
+    # If there is no parent then we have failed, so return None.
+    if not parent:
+        return None
+    # Check the parent node.
+    return findParentObject(parent)
 
-if not camera:
-    raise hou.Error("A camera is required!")
+thisRop         = hou.pwd()
+volOutputPath   = thisRop.parm("pbrt_vol_diskfile").eval()
+sopPath         = thisRop.parm("soppath").eval()
 
-pbrtfile    = open(scene_file, 'w+')
-res         = camera.parmTuple("res").eval()
-cam_xform   =  ' '.join(str(x) for x in camera.worldTransform().asTuple())
-fov         = camera.parm("aperture").eval() # Not correct, but for now...
-integrator  = thisRop.parm("pbrt_integrator").eval()
-maxdepth    = thisRop.parm("pbrt_maxdepth").eval()
-sampler     = thisRop.parm("pbrt_sampler").eval()
-pxsamples   = thisRop.parm("pbrt_pixelsamples").eval()
+sigma_a         = " ".join([str(x) for x in thisRop.parmTuple("pbrt_sigma_a").eval()])
+sigma_s         = " ".join([str(x) for x in thisRop.parmTuple("pbrt_sigma_s").eval()])
+phase_g         = thisRop.parm("pbrt_g").eval()
+mediumName      = thisRop.parm("pbrt_mediumName").eval()
 
-# Write commented header info
-pbrtfile.write('#\b# Generated for pbrt v3 from Houdini {0}\n#\n\n'.format(hou.applicationVersionString()))   
+vf = open(volOutputPath, 'w+')
 
-# Camera and render info
-pbrtfile.write('Film "image" "integer xresolution" [{0}] "integer yresolution" [{1}] "string filename" "{2}"\n\n'.format(res[0],res[1],pic_file))
-pbrtfile.write('Transform {0}\n'.format(cam_xform))
-pbrtfile.write('Camera "perspective" "float fov" [{0}]\n'.format(fov))
-pbrtfile.write('Integrator "{0}" "integer maxdepth" [{1}]\n'.format(integrator, maxdepth))
-pbrtfile.write('Sampler "{0}" "integer pixelsamples" [{1}]\n\n'.format(sampler, pxsamples))
+q           = hou.Quaternion()
+volnode     = hou.node(sopPath)
+volgeo      = volnode.geometry()
+volobj      = findParentObject(volnode)
+volobjxform = volobj.worldTransform().explode()
+q.setToRotationMatrix(volobj.worldTransform())
+volt        = volobjxform['translate']
+volr        = q.extractAngleAxis()
 
-# Begin the world
-pbrtfile.write('WorldBegin\n\n')
+if not volgeo.containsPrimType("Volume"):
+    raise hou.Error('No volumes detected on the input SOP.')
 
-# Add lights to the scene
-for lgt in lights:
+b = (volgeo.boundingBox().minvec(), volgeo.boundingBox().maxvec())
 
-    lgt_xform   = ' '.join(str(x) for x in lgt.worldTransform().asTuple())
-    lgt_shape   = # Support disk and sphere for now
-    lgt_L       = # The light's color * light intensity
-
-    pbrtfile.write('AttributeBegin\n')
-    pbrtfile.write('\tAreaLightSource "diffuse" "rgb L" [ {0} ]\n'.format())
-    pbrtfile.write('\tTransform {0}\n'.format())
-    pbrtfile.write('\Shape "{0}" "float radius" [{1}]\n'.format())
-    pbrtfile.write('AttributeEnd\n')
-
-# Add the objects to the scene
-for obj in objects:
-    pbrtfile.write(''.format())
-
-# Close the world and the file
-pbrtfile.write('WorldEnd\n')
-pbrtfile.close()
-
-# if '.ply' not in shapeOutputPath:
-#     raise hou.Error("Must output shape to .ply file.")
-
-# if '.pbrt' not in volOutputPath:
-#     raise hou.Error("Must output volume to .pbrt file.")
-
-# volnode     = hou.node(volpath)
-# shapenode   = hou.node(shapepath)
-
-# volgeo      = volnode.geometry()
-# shapegeo    = shapenode.geometry()
-
-# b = (shapegeo.boundingBox().minvec(), shapegeo.boundingBox().maxvec())
+# Just for organization
+_min = b[0]
+_max = b[1]
 
 # # Save the volume shape to a .ply file
 # shapegeo.saveToFile(shapeOutputPath)
 
-# # Save the volume data to pbrt file
-# for p in volgeo.prims():
-#     if isinstance(p, hou.Volume) and p.attribValue('name') == 'density':
-#         vf = open(volOutputPath, 'w+')
-#         res = p.resolution()
-#         nx = res[0]
-#         ny = res[1]
-#         nz = res[2]
-#         vf.write('MakeNamedMedium "{0}" "string type" "heterogeneous" "integer nx" {1} "integer ny" {2} "integer nz" {3}\n'.format(mediumName, nx, ny, nz) )
-#         vf.write('    "point p0" [ {0} {1} {2} ] "point p1" [ {3} {4} {5} ]\n'.format(b[0][0], b[0][1], b[0][2], b[1][0], b[1][1], b[1][2]))
-#         vf.write('    "float density" [\n')
-#         for rz in range(nz):
-#             for ry in range(ny):
-#                 for rx in range(nx):
-#                     vf.write('{0} '.format(p.voxel((rx,ry,rz))))
-#                 vf.write('\n')
-#         vf.write(']')
-#         vf.close()
-#         break
+vf.write('#\n# Generated for pbrt v3 from Houdini {0}\n'.format(hou.applicationVersionString()))
+vf.write('# Add this volume to a pbrt scene manually, using a relative or absolute path:\n#\n')
+vf.write('#    Include "{0}"\n'.format(volOutputPath.split('/')[-1]))   
+vf.write('#    Include "{0}"\n#\n\n'.format(volOutputPath))
+
+# Save the volume data to pbrt file
+for p in volgeo.prims():
+    if isinstance(p, hou.Volume) and p.attribValue('name') == 'density':
+        vf.write('AttributeBegin\n')
+        # Probably want to just stuff the transform here, instead of breaking it apart
+        vf.write('    Translate {0} {1} {2}\n'.format(volt[0], volt[1], volt[2]))
+        vf.write('    Rotate {0} {1} {2} {3}\n'.format(volr[0], volr[1][0], volr[1][1], volr[1][2]))
+        res = p.resolution()
+        nx = res[0]
+        ny = res[1]
+        nz = res[2]
+        vf.write('    MakeNamedMedium "{0}" "string type" "heterogeneous" "integer nx" {1} "integer ny" {2} "integer nz" {3}\n'.format(mediumName, nx, ny, nz) )
+        vf.write('        "point p0" [ {0} {1} {2} ] "point p1" [ {3} {4} {5} ]\n'.format(b[0][0], b[0][1], b[0][2], b[1][0], b[1][1], b[1][2]))
+        vf.write('        "float density" [\n            ')
+        for rz in range(nz):
+            for ry in range(ny):
+                for rx in range(nx):
+                    vf.write('{0} '.format(p.voxel((rx,ry,rz))))
+                vf.write('\n            ')
+        vf.write(']\n')
+        vf.write('        "rgb sigma_a" [{0}] "rgb sigma_s" [{1}]\n'.format(sigma_a, sigma_s))
+        vf.write('    Material ""\n')
+        vf.write('    MediumInterface "{0}" ""\n'.format(mediumName))
+        vf.write('    Shape "trianglemesh"\n')
+        vf.write('        "point P" [\n')
+        vf.write('          {0} {1} {2}\n'.format(_max[0], _min[1], _max[2]))
+        vf.write('          {0} {1} {2}\n'.format(_min[0], _min[1], _max[2]))
+        vf.write('          {0} {1} {2}\n'.format(_min[0], _max[1], _max[2]))
+        vf.write('          {0} {1} {2}\n'.format(_max[0], _max[1], _max[2]))
+        vf.write('          {0} {1} {2}\n'.format(_min[0], _min[1], _min[2]))
+        vf.write('          {0} {1} {2}\n'.format(_max[0], _min[1], _min[2]))
+        vf.write('          {0} {1} {2}\n'.format(_max[0], _max[1], _min[2]))
+        vf.write('          {0} {1} {2}\n'.format(_min[0], _max[1], _min[2]))
+        vf.write('        ]\n')
+        vf.write('        "integer indices" [\n')
+        vf.write('          0 1 2\n')
+        vf.write('          0 3 1\n')
+        vf.write('          4 5 6\n')
+        vf.write('          4 7 5\n')
+        vf.write('          7 3 5\n')
+        vf.write('          7 1 3\n')
+        vf.write('          6 2 4\n')
+        vf.write('          6 0 2\n')
+        vf.write('          6 3 0\n')
+        vf.write('          6 5 3\n')
+        vf.write('          2 7 4\n')
+        vf.write('          2 1 7\n')
+        vf.write('        ]\n')
+        break
+vf.write('AttributeEnd\n')
+vf.close()      
